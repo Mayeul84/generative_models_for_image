@@ -1,0 +1,2 @@
+name: ffhq
+root: data/ffhq256-1k-validation #data/samples_ffhq

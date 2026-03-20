@@ -1,0 +1,5 @@
+name: motion_blur
+kernel_size: 61
+intensity: 0.5
+channels: 3
+img_dim: 256

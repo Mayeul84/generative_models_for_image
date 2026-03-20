@@ -1,0 +1,4 @@
+N_MC: 23
+N_bi: 20 
+rho: 0.1 
+rho_decay_rate: 0.8
