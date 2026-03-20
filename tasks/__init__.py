@@ -44,4 +44,4 @@ class LinearOperator(ABC):
 
 from .gaussian_blur import GaussialBlur
 from .motion_blur import MotionBlur
-from inpainting import Inpainting
+from .inpainting import Inpainting
