@@ -160,14 +160,18 @@ class Inpainting(LinearOperator):
         Exact sample from the conditional Gaussian (eq. 15 / 17).
         Uses Sherman-Morrison-Woodbury (eq. 18): Q_x^{-1} is diagonal.
 
-            var[i] = sigma^2 * rho^2 / (sigma^2 + rho^2)   if observed
-            var[i] = rho^2                                   if missing
+        From eq. (18):
+            Q_x^{-1} = sigma^2 * (I_N - (sigma^2 / (sigma^2 + rho^2)) * H^T H)
+
+        So the diagonal entries are:
+            var[i] = sigma^2 * rho^2 / (sigma^2 + rho^2)   if observed  (mask=1)
+            var[i] = sigma^2                                 if missing   (mask=0)
         """
         sigma2 = sigma ** 2
         rho2   = rho   ** 2
 
         var_obs   = (sigma2 * rho2) / (sigma2 + rho2) * torch.ones_like(x)
-        var_unobs = rho2 * torch.ones_like(x)
+        var_unobs = sigma2 * torch.ones_like(x)  # eq. (18): sigma^2 for unobserved pixels
         diag_cov  = torch.where(self._mask > 0.5, var_obs, var_unobs)
 
         rhs  = self.transpose(y) / sigma2 + x / rho2

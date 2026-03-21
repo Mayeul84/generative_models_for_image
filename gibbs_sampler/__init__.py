@@ -52,7 +52,9 @@ class GibbsSampler:
 
         # Initialize X_MC and Z_MC with random values
         self.X_MC[:,:,:,0] = torch.randn((3, 256, 256), device=self.device)
-        self.Z_MC[:,:,:,0] = torch.randn((3, 256, 256), device=self.device)
+        #self.Z_MC[:,:,:,0] = torch.randn((3, 256, 256), device=self.device)
+        # apparemment ça accélère la convergence de démarrer sur Y
+        self.Z_MC[:,:,:,0] = operator.initialize(None, Y).squeeze(0)
 
     def estimate_time(self, value, array=None):
         if array is None:
