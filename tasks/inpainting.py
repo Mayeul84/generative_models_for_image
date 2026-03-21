@@ -16,7 +16,7 @@ class Inpainting(LinearOperator):
     which enables a closed-form diagonal covariance via Sherman-Morrison-Woodbury
     (eq. 18 of the paper):
 
-        Q_x^{-1} = sigma^2 * (I_N - (sigma^2 / (sigma^2 + rho^2)) * H^T H)
+        Q_x^{-1} = rho^2 * (I_N - (rho^2 / (sigma^2 + rho^2)) * H^T H)
 
     Since H^T H is a diagonal binary mask, Q_x^{-1} is diagonal and sampling
     from the conditional Gaussian (eq. 15) is exact and efficient (E-PO, eq. 17).
@@ -161,22 +161,30 @@ class Inpainting(LinearOperator):
         Uses Sherman-Morrison-Woodbury (eq. 18): Q_x^{-1} is diagonal.
 
         From eq. (18):
-            Q_x^{-1} = sigma^2 * (I_N - (sigma^2 / (sigma^2 + rho^2)) * H^T H)
+            Q_x^{-1} = rho^2 * (I_N - (rho^2 / (sigma^2 + rho^2)) * H^T H)
 
-        So the diagonal entries are:
+        Diagonal entries:
             var[i] = sigma^2 * rho^2 / (sigma^2 + rho^2)   if observed  (mask=1)
-            var[i] = sigma^2                                 if missing   (mask=0)
+            var[i] = rho^2                                   if missing   (mask=0)
+
+        Mean (eq. 17):
+            mu_x = Q_x^{-1} * (H^T y / sigma^2 + x / rho^2)
+            -> observed : weighted combination of y and x (z)
+            -> missing  : rho^2 * x/rho^2 = x  ✓  (samples from prior N(z, rho^2))
         """
         sigma2 = sigma ** 2
         rho2   = rho   ** 2
 
+        # Diagonal of Q_x^{-1} from eq. (18)
         var_obs   = (sigma2 * rho2) / (sigma2 + rho2) * torch.ones_like(x)
-        var_unobs = sigma2 * torch.ones_like(x)  # eq. (18): sigma^2 for unobserved pixels
+        var_unobs = rho2 * torch.ones_like(x)   # ✅ rho^2 for missing pixels
         diag_cov  = torch.where(self._mask > 0.5, var_obs, var_unobs)
 
+        # RHS = H^T y / sigma^2 + z / rho^2   (x plays the role of z here)
         rhs  = self.transpose(y) / sigma2 + x / rho2
         mu_x = diag_cov * rhs
 
+        # Sample: mu_x + sqrt(Q_x^{-1}) * eps
         noise = torch.sqrt(diag_cov) * torch.randn_like(x)
         return mu_x + noise
 
