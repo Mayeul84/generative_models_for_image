@@ -258,13 +258,14 @@ class DDPM(SpacedDiffusion):
             
         return x
     
+from diffusers import LDMPipeline
 
 class LDMSampler:
     def __init__(self, repo_id="CompVis/ldm-celebahq-256"):
-        from diffusers import AutoencoderKL, UNet2DModel, DDPMScheduler
-        self.vae = AutoencoderKL.from_pretrained(repo_id, subfolder="vae")
-        self.unet = UNet2DModel.from_pretrained(repo_id, subfolder="unet")
-        self.scheduler = DDPMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+        pipe = LDMPipeline.from_pretrained(repo_id)
+        self.vae = pipe.vqvae        # VQModel, pas AutoencoderKL
+        self.unet = pipe.unet
+        self.scheduler = pipe.scheduler
         self.vae.eval()
         self.unet.eval()
 
@@ -275,10 +276,9 @@ class LDMSampler:
         return self
 
     def diffuse_back(self, x, model=None, t_start=0, t_end=None):
-        # Encode x -> ℓ
+        # Encode x -> ℓ  (VQModel : encode renvoie .latents, pas .latent_dist)
         with torch.no_grad():
-            l = self.vae.encode(x).latent_dist.sample()
-            l = l * self.vae.config.scaling_factor
+            l = self.vae.encode(x).latents
 
         # Diffuser dans ℝᵈ
         for t in range(t_start, t_end if t_end else 0, -1):
@@ -287,11 +287,10 @@ class LDMSampler:
                 noise_pred = self.unet(l, t_tensor).sample
             l = self.scheduler.step(noise_pred, t, l).prev_sample
 
-        # Decode ℓ -> z
+        # Decode ℓ -> z  (VQModel : decode renvoie .sample directement)
         with torch.no_grad():
-            z = self.vae.decode(l / self.vae.config.scaling_factor).sample
+            z = self.vae.decode(l).sample
         return z
-
 
 @register_sampler(name='ddim')
 class DDIM(SpacedDiffusion):
