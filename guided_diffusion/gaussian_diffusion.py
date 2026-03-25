@@ -276,18 +276,30 @@ class LDMSampler:
         return self
 
     def diffuse_back(self, x, model=None, t_start=0, t_end=None):
-        # Encode x -> ℓ  (VQModel : encode renvoie .latents, pas .latent_dist)
         with torch.no_grad():
             l = self.vae.encode(x).latents
 
-        # Diffuser dans ℝᵈ
         for t in range(t_start, t_end if t_end else 0, -1):
+            l = l.detach().requires_grad_(True)
             t_tensor = torch.tensor([t], device=l.device)
-            with torch.no_grad():
-                noise_pred = self.unet(l, t_tensor).sample
-            l = self.scheduler.step(noise_pred, t, l).prev_sample
 
-        # Decode ℓ -> z  (VQModel : decode renvoie .sample directement)
+            # Prédiction du bruit
+            noise_pred = self.unet(l, t_tensor).sample
+
+            # Tweedie : estimation de ℓ_0
+            alpha_bar = self.scheduler.alphas_cumprod[t]
+            l0_hat = (l - (1 - alpha_bar).sqrt() * noise_pred) / alpha_bar.sqrt()
+
+            # Guidance : gradient de ‖x − D(ℓ̂_0)‖²
+            x_hat = self.vae.decode(l0_hat).sample
+            loss = torch.norm(x - x_hat) ** 2
+            loss.backward()
+
+            with torch.no_grad():
+                # Pas de diffusion corrigé
+                l = self.scheduler.step(noise_pred, t, l).prev_sample
+                l -= self.guidance_scale * l.grad
+
         with torch.no_grad():
             z = self.vae.decode(l).sample
         return z
