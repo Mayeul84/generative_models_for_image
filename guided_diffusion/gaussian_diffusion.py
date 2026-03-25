@@ -259,6 +259,40 @@ class DDPM(SpacedDiffusion):
         return x
     
 
+class LDMSampler:
+    def __init__(self, repo_id="CompVis/ldm-celebahq-256"):
+        from diffusers import AutoencoderKL, UNet2DModel, DDPMScheduler
+        self.vae = AutoencoderKL.from_pretrained(repo_id, subfolder="vae")
+        self.unet = UNet2DModel.from_pretrained(repo_id, subfolder="unet")
+        self.scheduler = DDPMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+        self.vae.eval()
+        self.unet.eval()
+
+    def to(self, device):
+        self.vae = self.vae.to(device)
+        self.unet = self.unet.to(device)
+        self.device = device
+        return self
+
+    def diffuse_back(self, x, model=None, t_start=0, t_end=None):
+        # Encode x -> ℓ
+        with torch.no_grad():
+            l = self.vae.encode(x).latent_dist.sample()
+            l = l * self.vae.config.scaling_factor
+
+        # Diffuser dans ℝᵈ
+        for t in range(t_start, t_end if t_end else 0, -1):
+            t_tensor = torch.tensor([t], device=l.device)
+            with torch.no_grad():
+                noise_pred = self.unet(l, t_tensor).sample
+            l = self.scheduler.step(noise_pred, t, l).prev_sample
+
+        # Decode ℓ -> z
+        with torch.no_grad():
+            z = self.vae.decode(l / self.vae.config.scaling_factor).sample
+        return z
+
+
 @register_sampler(name='ddim')
 class DDIM(SpacedDiffusion):
     def p_sample(self, model, x, t, eta=0.0):
